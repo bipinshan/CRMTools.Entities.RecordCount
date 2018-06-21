@@ -37,6 +37,8 @@ namespace CRMTools.Entities.RecordCount
             this.comboBox.Visibility = Visibility.Hidden;
             this.comboBox1.Visibility = Visibility.Hidden;
             this.listView.Visibility = Visibility.Hidden;
+            this.listView1.Visibility = Visibility.Hidden;
+            this.button.Visibility = Visibility.Hidden;
         }
 
         /// <summary>
@@ -205,7 +207,7 @@ namespace CRMTools.Entities.RecordCount
                     totalCount = totalCount + entityCollection.Entities.Count;
                 }
 
-                MessageBox.Show("Total Record Count :" +totalCount.ToString());
+                MessageBox.Show("Total Record Count :" + totalCount.ToString());
 
 
                 // Retrieve Views
@@ -242,6 +244,8 @@ namespace CRMTools.Entities.RecordCount
                 this.comboBox1.Visibility = Visibility.Visible;
                 this.label2.Visibility = Visibility.Visible;
                 this.listView.Visibility = Visibility.Visible;
+                this.button.Visibility = Visibility.Visible;
+
                 //Display the Retrieved views
                 ArrayList viewList = new ArrayList();
 
@@ -271,7 +275,7 @@ namespace CRMTools.Entities.RecordCount
                     lstAttr.Add(attrobj);
                 }
 
-                lstAttr=lstAttr.OrderBy(o => o.AttributeName).ToList();
+                lstAttr = lstAttr.OrderBy(o => o.AttributeName).ToList();
                 this.comboBox1.DisplayMemberPath = "AttributeName";
                 this.comboBox1.SelectedValuePath = "AttributeSchemaName";
                 this.comboBox1.ItemsSource = lstAttr;
@@ -280,8 +284,48 @@ namespace CRMTools.Entities.RecordCount
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Error Message: "+ex.Message);
+                MessageBox.Show("Error Message: " + ex.Message);
             }
+        }
+
+        private void button_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                this.listView1.Visibility = Visibility.Visible;
+                List<WebResource> lstWebRes = new List<WebResource>();
+                lstWebRes = MainWindow.GetWebResources(svcClient.OrganizationServiceProxy);
+                lstWebRes = lstWebRes.OrderBy(o => o.DisplayName).ToList();
+                this.listView1.ItemsSource = lstWebRes;
+            }
+            catch (Exception ex)
+            {
+
+                MessageBox.Show("Error Message: " + ex.Message);
+            }
+
+
+        }
+
+        public static List<WebResource> GetWebResources(IOrganizationService OrgService)
+        {
+            var fetchQuery = @"<fetch mapping='logical' version='1.0'>
+                        <entity name='webresource'>
+                            <attribute name='name' />
+                            <attribute name='displayname' />
+                            <attribute name='webresourcetype' />
+                        </entity>
+                    </fetch>";
+
+            EntityCollection result = OrgService.RetrieveMultiple(new FetchExpression(fetchQuery));
+            List<WebResource> WebResourceList = new List<WebResource>();
+
+            foreach (var webresource in result.Entities)
+            {
+                WebResourceList.Add(new WebResource() { WebResourceName = webresource.Attributes["name"].ToString(), Type = ((OptionSetValue)webresource.Attributes["webresourcetype"]).Value.ToString(), DisplayName = webresource.Attributes["displayname"].ToString() });
+            }
+
+            return WebResourceList;
         }
     }
 
@@ -295,5 +339,13 @@ namespace CRMTools.Entities.RecordCount
     {
         public string AttributeName { get; set; }
         public string AttributeSchemaName { get; set; }
+    }
+
+    public class WebResource
+    {
+        public string WebResourceName { get; set; }
+        public string Type { get; set; }
+        public string DisplayName { get; set; }
+
     }
 }
