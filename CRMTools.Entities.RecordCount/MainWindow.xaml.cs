@@ -1,4 +1,5 @@
 ﻿using CRMTools.Entities.RecordCount.LoginWindow;
+using Microsoft.Crm.Sdk.Messages;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Metadata;
@@ -38,7 +39,11 @@ namespace CRMTools.Entities.RecordCount
             this.comboBox1.Visibility = Visibility.Hidden;
             this.listView.Visibility = Visibility.Hidden;
             this.listView1.Visibility = Visibility.Hidden;
+            this.listView2.Visibility = Visibility.Hidden;
+            this.listView3.Visibility = Visibility.Hidden;
             this.button.Visibility = Visibility.Hidden;
+            this.label3.Visibility = Visibility.Hidden;
+            this.comboBox2.Visibility = Visibility.Hidden;
         }
 
         /// <summary>
@@ -49,6 +54,8 @@ namespace CRMTools.Entities.RecordCount
         private void LoginButton_Click(object sender, RoutedEventArgs e)
         {
             List<EntityObj> lst = new List<EntityObj>();
+
+            List<SystemUser> lstActiveUsr = new List<SystemUser>();
 
 
             #region Login Control
@@ -119,7 +126,25 @@ namespace CRMTools.Entities.RecordCount
                     this.comboBox.ItemsSource = lst;
                     this.comboBox.Text = "Select Entity Name";
 
+                    this.label3.Visibility = Visibility.Visible;
+                    this.comboBox2.Visibility = Visibility.Visible;
 
+                    DataCollection<Entity> activeUsrsColl = MainWindow.FindEnabledUsers(svcClient.OrganizationServiceProxy);
+
+                    foreach (Entity user in activeUsrsColl)
+                    {
+                        SystemUser sysUser = new SystemUser();
+                        sysUser.FullName = user["fullname"].ToString();
+                        sysUser.SystemUserID = user["systemuserid"].ToString();
+
+                        lstActiveUsr.Add(sysUser);
+                    }
+
+                    lstActiveUsr = lstActiveUsr.OrderBy(o => o.FullName).ToList();
+                    this.comboBox2.DisplayMemberPath = "FullName";
+                    this.comboBox2.SelectedValuePath = "SystemUserID";
+                    this.comboBox2.ItemsSource = lstActiveUsr;
+                    this.comboBox2.Text = "Select Active User Name";
 
                     // Get data from CRM . 
                     //string FetchXML =
@@ -327,6 +352,102 @@ namespace CRMTools.Entities.RecordCount
 
             return WebResourceList;
         }
+
+        public static DataCollection<Entity> FindEnabledUsers(IOrganizationService service)
+        {
+            try
+            {
+                // Query to retrieve other users.
+                QueryExpression querySystemUser = new QueryExpression
+                {
+                    EntityName = "systemuser",
+                    ColumnSet = new ColumnSet(new String[] { "systemuserid", "fullname" }),
+                    Criteria = new FilterExpression()
+                };
+
+                querySystemUser.Criteria.AddCondition("isdisabled",
+                    ConditionOperator.Equal, "0");
+                // Excluding SYSTEM user.
+                querySystemUser.Criteria.AddCondition("lastname",
+                    ConditionOperator.NotEqual, "SYSTEM");
+                // Excluding INTEGRATION user.
+                querySystemUser.Criteria.AddCondition("lastname",
+                    ConditionOperator.NotEqual, "INTEGRATION");
+
+                return service.RetrieveMultiple(querySystemUser).Entities;
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+        private void comboBox2_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            //RetrieveRecordChangeHistoryRequest changeRequest = new RetrieveRecordChangeHistoryRequest();
+
+            ArrayList lstUserRoles = new ArrayList();
+            SystemUser objSysUsr = new SystemUser();
+            objSysUsr = (SystemUser)this.comboBox2.SelectedItem;
+            //changeRequest.Target = new EntityReference("systemuser", Guid.Parse(objSysUsr.SystemUserID));
+
+            //RetrieveRecordChangeHistoryResponse changeResponse = (RetrieveRecordChangeHistoryResponse)svcClient.OrganizationServiceProxy.Execute(changeRequest);
+
+            QueryExpression queryExpression = new QueryExpression();
+            queryExpression.EntityName = "role"; //role entity name
+            ColumnSet cols = new ColumnSet();
+            cols.AddColumn("name"); //We only need role name
+            queryExpression.ColumnSet = cols;
+            ConditionExpression ce = new ConditionExpression();
+            ce.AttributeName = "systemuserid";
+            ce.Operator = ConditionOperator.Equal;
+            ce.Values.Add(objSysUsr.SystemUserID);
+            //system roles
+            LinkEntity lnkEntityRole = new LinkEntity();
+            lnkEntityRole.LinkFromAttributeName = "roleid";
+            lnkEntityRole.LinkFromEntityName = "role"; //FROM
+            lnkEntityRole.LinkToEntityName = "systemuserroles";
+            lnkEntityRole.LinkToAttributeName = "roleid";
+            //system users
+            LinkEntity lnkEntitySystemusers = new LinkEntity();
+            lnkEntitySystemusers.LinkFromEntityName = "systemuserroles";
+            lnkEntitySystemusers.LinkFromAttributeName = "systemuserid";
+            lnkEntitySystemusers.LinkToEntityName = "systemuser";
+            lnkEntitySystemusers.LinkToAttributeName = "systemuserid";
+            lnkEntitySystemusers.LinkCriteria = new FilterExpression();
+            lnkEntitySystemusers.LinkCriteria.Conditions.Add(ce);
+            lnkEntityRole.LinkEntities.Add(lnkEntitySystemusers);
+            queryExpression.LinkEntities.Add(lnkEntityRole);
+            EntityCollection entColRoles = svcClient.OrganizationServiceProxy.RetrieveMultiple(queryExpression);
+            if (entColRoles != null && entColRoles.Entities.Count > 0)
+            {
+                foreach (Entity entRole in entColRoles.Entities)
+                {
+                    lstUserRoles.Add(entRole["name"].ToString());
+                }
+            }
+
+            lstUserRoles.Sort();
+            
+            this.listView2.Visibility = Visibility.Visible;
+            this.listView2.ItemsSource = lstUserRoles;
+
+            QueryExpression query = new QueryExpression("team");
+            query.ColumnSet = new ColumnSet(true);
+            LinkEntity link = query.AddLink("teammembership", "teamid", "teamid");
+            link.LinkCriteria.AddCondition(new ConditionExpression("systemuserid", ConditionOperator.Equal, objSysUsr.SystemUserID));
+
+            ArrayList lstTeam = new ArrayList();
+            EntityCollection entColTeams = svcClient.OrganizationServiceProxy.RetrieveMultiple(query);
+            foreach (Entity entTeams in entColTeams.Entities)
+            {
+                lstTeam.Add(entTeams["name"].ToString());
+            }
+
+            lstTeam.Sort();
+            this.listView3.Visibility = Visibility.Visible;
+            this.listView3.ItemsSource = lstTeam;
+        }
     }
 
     public class EntityObj
@@ -347,5 +468,11 @@ namespace CRMTools.Entities.RecordCount
         public string Type { get; set; }
         public string DisplayName { get; set; }
 
+    }
+
+    public class SystemUser
+    {
+        public string FullName { get; set; }
+        public string SystemUserID { get; set; }
     }
 }
